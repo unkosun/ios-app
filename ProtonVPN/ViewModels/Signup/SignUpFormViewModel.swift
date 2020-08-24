@@ -60,6 +60,7 @@ protocol SignUpFormViewModel {
     
     func startRegistration()
     func switchToLogin()
+    func cancel()
 }
 
 class SignUpFormViewModelImplementation: SignUpFormViewModel {
@@ -98,14 +99,14 @@ class SignUpFormViewModelImplementation: SignUpFormViewModel {
     private let factory: Factory
     
     private let plan: AccountPlan
-    private var paymentVerificationCode: String? {
+    private var paymentToken: PaymentToken? {
         didSet {
-            let token: HumanVerificationToken? // = TokenType.payment(paymentVerificationCode ?? "")
-            if let paymentVerificationCode = paymentVerificationCode {
+            let token: HumanVerificationToken?
+            if let paymentVerificationCode = paymentToken?.token {
                 token = HumanVerificationToken(type: .payment, token: paymentVerificationCode)
             } else {
                 token = nil
-            }            
+            }
             alamofireWrapper.setHumanVerification(token: token)
         }
     }
@@ -174,7 +175,12 @@ class SignUpFormViewModelImplementation: SignUpFormViewModel {
     
     private func failed(withError error: Error?) {
         isLoading = false
-        paymentVerificationCode = nil
+        
+        if let userError = error as? UserError, userError == .cancelled {
+            //the user cancelled the validation do not display error message
+            return
+        }
+        
         if let error = error {
             DispatchQueue.main.async {
                 self.showError?(error)
@@ -201,14 +207,19 @@ class SignUpFormViewModelImplementation: SignUpFormViewModel {
         storeKitManager.purchaseProduct(withId: productId, refreshHandler: { [weak self] in
             self?.failed(withError: nil)
             
-        }, successCompletion: { [weak self] verificationCode in
+        }, successCompletion: { [weak self] token in
             PMLog.ET("IAP succeeded", level: .info)
-            self?.paymentVerificationCode = verificationCode
+            self?.paymentToken = token
             self?.step3modulus()
             
         }, errorCompletion: { [weak self] (error) in
             PMLog.ET("IAP errored: \(error.localizedDescription)")
-            self?.failed(withError: error)
+            if 22916 == (error as NSError).code && self?.paymentToken != nil { // 22916 - apple receipt already used
+                PMLog.D("Ignoring IAP error because we already have a token")
+                self?.step3modulus()
+            } else {
+                self?.failed(withError: error)
+            }
                 
         }, deferredCompletion: {
             PMLog.ET("IAP deferred", level: .warn)
@@ -249,7 +260,6 @@ class SignUpFormViewModelImplementation: SignUpFormViewModel {
             
             self.userApiService.createUser(userProperties: userProperties, success: { [weak self] in
                 self?.step6login()
-
             }, failure: { [weak self] (error) in
                 self?.failed(withError: error)
             })
@@ -265,7 +275,6 @@ class SignUpFormViewModelImplementation: SignUpFormViewModel {
         // login
         appSessionManager.logIn(username: username, password: password, success: { [weak self] in
             self?.finishedSuccessfully(loggedIn: true)
-            
         }, failure: { [weak self] (_) in
             self?.finishedSuccessfully(loggedIn: false)
         })

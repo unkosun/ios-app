@@ -49,6 +49,7 @@ protocol AppSessionManager {
     func loadDataWithoutFetching() -> Bool
     func loadDataWithoutLogin(success: @escaping () -> Void, failure: @escaping (Error) -> Void)
     func refreshData()
+    func canPreviewApp() -> Bool
 }
 
 class AppSessionManagerImplementation: AppSessionManager {
@@ -128,6 +129,13 @@ class AppSessionManagerImplementation: AppSessionManager {
         return true
     }
     
+    func canPreviewApp() -> Bool {
+        guard !self.serverStorage.fetch().isEmpty, self.propertiesManager.userIp != nil else {
+            return false
+        }
+        return true
+    }
+    
     func loadDataWithoutLogin(success: @escaping () -> Void, failure: @escaping (Error) -> Void) {
         vpnApiService.vpnProperties(lastKnownIp: propertiesManager.userIp, success: { [weak self] properties in
             guard let `self` = self else { return }
@@ -160,8 +168,9 @@ class AppSessionManagerImplementation: AppSessionManager {
     
     private func retrievePropertiesAndLogIn(success: @escaping () -> Void, failure: @escaping (Error) -> Void) {
         // update IAPs
-        ServicePlanDataServiceImplementation.shared.updateCurrentSubscription()
-        storeKitManager.subscribeToPaymentQueue()
+        ServicePlanDataServiceImplementation.shared.updateCurrentSubscription { [weak self] in
+            self?.storeKitManager.subscribeToPaymentQueue()
+        }
         
         vpnApiService.vpnProperties(lastKnownIp: propertiesManager.userIp, success: { [weak self] properties in
             guard let `self` = self else { return }
@@ -172,6 +181,7 @@ class AppSessionManagerImplementation: AppSessionManager {
             self.serverStorage.store(properties.serverModels)
             
             self.propertiesManager.userIp = properties.ip
+            self.propertiesManager.openVpnConfig = properties.openVpnConfig
             
             self.resolveActiveSession(success: { [weak self] in
                 self?.setAndNotify(for: .established)
@@ -224,7 +234,7 @@ class AppSessionManagerImplementation: AppSessionManager {
         guard let vpnCredentials = try? vpnKeychain.fetch() else { return }
 
         if case AppState.connected(_) = appStateManager.state {
-            if let server = appStateManager.activeServer {
+            if let server = appStateManager.activeConnection()?.server {
                 if server.tier > vpnCredentials.maxTier {
                     appStateManager.disconnect()
                 }
@@ -317,7 +327,7 @@ class AppSessionManagerImplementation: AppSessionManager {
         lastRefresh = Date()
         if loggedIn {
             attemptDataRefreshWithoutLogin(success: {}, failure: { error in
-                PMLog.D("Failed to reistablish vpn credentials: \(error.localizedDescription)", level: .error)
+                PMLog.D("Failed to reestablish vpn credentials: \(error.localizedDescription)", level: .error)
                 
                 let error = error as NSError
                 switch error.code {

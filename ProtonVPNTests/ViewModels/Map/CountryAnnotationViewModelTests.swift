@@ -50,12 +50,11 @@ class CountryAnnotationViewModelTests: XCTestCase {
             serverModel(withStatus: 0),
             serverModel(withStatus: 0),
             serverModel(withStatus: 0),
-            ]).underMaintenance, "UnderMaintenance returned false while all serversa are under maintenance")
+            ]).underMaintenance, "UnderMaintenance returned false while all servers are under maintenance")
         
     }
 
     // MARK: Mocks
-    // FUTUREFIX: Make/find a factory for creating mocks
     
     private func viewModel(withServers servers: [ServerModel]) -> CountryAnnotationViewModel {
         let country = CountryModel(serverModel: ServerModel(
@@ -74,7 +73,11 @@ class CountryAnnotationViewModelTests: XCTestCase {
             location: ServerLocation(lat: 1, long: 2)
             )
         )
-        let viewModel = CountryAnnotationViewModel(countryModel: country, servers: servers, serverType: ServerType.standard, vpnGateway: nil, enabled: true, alertService: AlertServiceEmptyStub(), loginService: LoginServiceMock())
+        let alamofireWrapper = AlamofireWrapperImplementation()
+        let vpnApiService = VpnApiService(alamofireWrapper: alamofireWrapper)
+        let configurationPreparer = VpnManagerConfigurationPreparer(vpnKeychain: VpnKeychainMock(), alertService: AlertServiceEmptyStub())
+        let appStateManager = AppStateManager(vpnApiService: vpnApiService, vpnManager: VpnManagerMock(), alamofireWrapper: alamofireWrapper, alertService: AlertServiceEmptyStub(), timerFactory: TimerFactoryMock(), propertiesManager: PropertiesManagerMock(), vpnKeychain: VpnKeychainMock(), configurationPreparer: configurationPreparer)
+        let viewModel = CountryAnnotationViewModel(countryModel: country, servers: servers, serverType: ServerType.standard, vpnGateway: nil, appStateManager: appStateManager, enabled: true, alertService: AlertServiceEmptyStub(), loginService: LoginServiceMock())
         
         return viewModel
     }

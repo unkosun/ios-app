@@ -38,10 +38,13 @@ class SignUpCoordinator: Coordinator {
     var finished: ((_ loggedIn: Bool) -> Void)?
     var cancelled: (() -> Void)?
     
-    typealias Factory = PlanSelectionViewModelFactory & LoginServiceFactory & PlanServiceFactory & SignUpFormViewModelFactory
+    typealias Factory = PlanSelectionViewModelFactory & LoginServiceFactory & PlanServiceFactory & SignUpFormViewModelFactory & CoreAlertServiceFactory & StoreKitManagerFactory & StoreKitStateCheckerFactory
     private let factory: Factory
     private lazy var loginService: LoginService = factory.makeLoginService()
     private lazy var planService: PlanService = factory.makePlanService()
+    private lazy var alertService: AlertService = factory.makeCoreAlertService()
+    private lazy var storeKitManager: StoreKitManager = factory.makeStoreKitManager()
+    private lazy var storeKitStateChecker: StoreKitStateChecker = factory.makeStoreKitStateChecker()
     
     private var plan: AccountPlan?
     
@@ -50,18 +53,35 @@ class SignUpCoordinator: Coordinator {
     }
     
     func start() {
-        let viewModel = factory.makePlanSelectionSimpleViewModel(isDismissalAllowed: true, planSelectionFinished: { plan in
-            debugPrint("plan selected!", plan)
+        guard !storeKitStateChecker.isBuyProcessRunning() else {
+            // There is unfinished IAP transaction.
+            
+            if let plan = storeKitStateChecker.planBuyStarted() {
+                // Pre-select plan that user already purchased
+                selected(plan: plan)
+                return
+            }
+            
+            // User will register with free account and get credits from IAP after the first login.
+            selected(plan: .free)
+            return
+        }
+        
+        startPlanSelection()
+    }
+        
+    func cancel() {
+        cancelled?()
+    }
+    
+    private func startPlanSelection() {
+        let viewModel = factory.makePlanSelectionSimpleViewModel(isDismissalAllowed: true, alertService: alertService, planSelectionFinished: { plan in
             self.selected(plan: plan)
         })
         viewModel.cancelled = {
             self.cancel()
         }
         planService.presentPlanSelection(viewModel: viewModel)
-    }
-        
-    func cancel() {
-        cancelled?()
     }
     
     private func selected(plan: AccountPlan) {

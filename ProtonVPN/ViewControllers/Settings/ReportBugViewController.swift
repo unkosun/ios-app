@@ -28,6 +28,8 @@ class ReportBugViewController: UIViewController {
     
     public var viewModel: ReportBugViewModel!
     
+    private let vpnManager: VpnManagerProtocol
+    
     private let fieldFontSize: CGFloat = 16
     private let textFontSize: CGFloat = 14
     
@@ -45,10 +47,20 @@ class ReportBugViewController: UIViewController {
     @IBOutlet weak var messageField: UITextView!
     @IBOutlet weak var scrollView: UIScrollView!
     // Keyboard
-    @IBOutlet weak var bottomContraint: NSLayoutConstraint!
+    @IBOutlet weak var bottomConstraint: NSLayoutConstraint!
     private let footerConstraintConstant: CGFloat = 0
     private var scrollViewClick: UITapGestureRecognizer!
 
+    required init?(coder aDecoder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    init(vpnManager: VpnManagerProtocol) {
+        self.vpnManager = vpnManager
+        
+        super.init(nibName: "ReportBugViewController", bundle: nil)
+    }
+    
     override func viewDidLoad() {
         super.viewDidLoad()
 
@@ -88,11 +100,17 @@ class ReportBugViewController: UIViewController {
     }
     
     @IBAction func logsSwitchChanged() {
-        guard let file = PMLog.logFile() else { return }
         if logsSwitch.isOn {
-            viewModel.add(files: [file])
+            if let applicationLogFile = PMLog.logFile() {
+                viewModel.add(files: [applicationLogFile])
+            }
+            
+            vpnManager.logFile(for: .openVpn(.undefined)) { [weak self] (fileUrl) in
+                guard let `self` = self, let fileUrl = fileUrl, self.logsSwitch.isOn else { return }
+                self.viewModel.add(files: [fileUrl])
+            }
         } else {
-            viewModel.remove(file: file)
+            viewModel.removeAllFiles()
         }
     }
     
@@ -179,9 +197,9 @@ class ReportBugViewController: UIViewController {
         let animationOptions = UIView.AnimationOptions(rawValue: UIView.AnimationOptions.beginFromCurrentState.rawValue | animationCurveRaw << 16)
         
         if endFrame.minY >= UIScreen.main.bounds.maxY { // Keyboard disappearing
-            self.bottomContraint.constant = self.footerConstraintConstant
+            self.bottomConstraint.constant = self.footerConstraintConstant
         } else {
-            self.bottomContraint.constant = endFrame.size.height
+            self.bottomConstraint.constant = endFrame.size.height
         }
         
         UIView.animate(withDuration: duration, delay: 0, options: animationOptions, animations: { [unowned self] in

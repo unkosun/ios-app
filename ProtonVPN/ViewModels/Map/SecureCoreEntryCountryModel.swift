@@ -26,6 +26,7 @@ import vpncore
 
 class SecureCoreEntryCountryModel: AnnotationViewModel, Hashable {
     
+    private let appStateManager: AppStateManager
     private var vpnGateway: VpnGatewayProtocol?
     
     var buttonStateChanged: (() -> Void)?
@@ -35,7 +36,14 @@ class SecureCoreEntryCountryModel: AnnotationViewModel, Hashable {
     let coordinate: CLLocationCoordinate2D
     
     var isConnected: Bool {
-        if let vpnGateway = vpnGateway, vpnGateway.connection == .connected, let activeServer = vpnGateway.activeServer, activeServer.serverType == .secureCore, activeServer.countryCode == countryCode {
+        if let vpnGateway = vpnGateway, vpnGateway.connection == .connected, let activeServer = appStateManager.activeConnection()?.server, activeServer.serverType == .secureCore, activeServer.countryCode == countryCode {
+            return true
+        }
+        return false
+    }
+    
+    var isConnecting: Bool {
+        if let vpnGateway = vpnGateway, let activeConnection = vpnGateway.lastConnectionRequest, vpnGateway.connection == .connecting, case ConnectionRequestType.country(let activeCountryCode, _) = activeConnection.connectionType, activeCountryCode == countryCode {
             return true
         }
         return false
@@ -67,7 +75,7 @@ class SecureCoreEntryCountryModel: AnnotationViewModel, Hashable {
     }
     
     var labelString: NSAttributedString {
-        return String(format: LocalizedString.viaCountry, LocalizationUtility.countryName(forCode: countryCode) ?? "").attributed(withColor: .protonWhite(), fontSize: 18, alignment: .center)
+        return String(format: LocalizedString.viaCountry, LocalizationUtility.default.countryName(forCode: countryCode) ?? "").attributed(withColor: .protonWhite(), fontSize: 18, alignment: .center)
     }
     
     var labelColor: UIColor {
@@ -80,7 +88,8 @@ class SecureCoreEntryCountryModel: AnnotationViewModel, Hashable {
     
     let showAnchor: Bool = false
     
-    init(countryCode: String, location: CLLocationCoordinate2D) {
+    init(appStateManager: AppStateManager, countryCode: String, location: CLLocationCoordinate2D) {
+        self.appStateManager = appStateManager
         self.countryCode = countryCode
         self.coordinate = location
     }
@@ -89,11 +98,11 @@ class SecureCoreEntryCountryModel: AnnotationViewModel, Hashable {
         exitCountryCodes.insert(code)
     }
     
-    func tapped(delegate: ConnectingCellDelegate) {
+    func tapped() {
         return // don't respond to taps
     }
     
-    func hightlight(_ highlight: Bool) {
+    func highlight(_ highlight: Bool) {
         if highlight && viewState == .idle {
             viewState = .selected
         } else if !highlight && viewState == .selected {

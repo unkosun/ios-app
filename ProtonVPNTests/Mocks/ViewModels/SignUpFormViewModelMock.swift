@@ -24,6 +24,8 @@ import vpncore
 
 class SignUpFormViewModelMock: SignUpFormViewModel {
     
+    var accountPlan: AccountPlan?
+    
     var resultValidateEmail: FormValidationError?
     var resultvalidateUserName: FormValidationError?
     var resultvalidatePassword1: FormValidationError?
@@ -68,4 +70,6 @@ class SignUpFormViewModelMock: SignUpFormViewModel {
     func switchToLogin() {
     }
     
+    func cancel(){
+    }
 }
